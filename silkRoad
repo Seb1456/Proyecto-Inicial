@@ -1,0 +1,368 @@
+/**
+ * Write a description of class silkRoad here.
+ * 
+ * @author Sebastián Granados y Daniel valero  
+ * @version (a version number or a date)
+ */
+
+import java.util.ArrayList;
+
+public class silkRoad {
+    private int length;
+    private int location;   
+    private int tenges;
+    private boolean isVisible;
+
+    private Store store;
+    private Robot robot;
+    private Road road;
+
+    public silkRoad(int length) {
+        this.length = length;
+        this.road = new Road(length);
+        this.isVisible = false;
+        this.location = -1; 
+    }
+
+    public void makeVisible(){
+        isVisible = true;
+        road.makeVisible();
+        if (store != null) store.makeVisible();
+        if (robot != null) robot.makeVisible();
+    }
+
+    public void makeInvisible() {
+        isVisible = false;
+        road.makeInvisible();
+        if (store != null) store.makeInvisible();
+        if (robot != null) robot.makeInvisible();
+    }
+
+    public void placeStore(int location, int tenges){
+        if (location >= length || location < 0) {
+            throw new IllegalArgumentException("La ubicación no debe sobrepasar la longitud de la carretera.");
+        }
+
+        int[] pos = road.getCoordinates(location);
+        int scale = road.getScale();
+
+        int[] next = (location + 1 < length) ? road.getCoordinates(location + 1) : pos;
+        int dx = next[0] - pos[0];
+        int dy = next[1] - pos[1];
+
+        int storeX = pos[0];
+        int storeY = pos[1];
+
+        if (dx != 0) { 
+            storeX += scale;
+        } else if (dy != 0) { 
+            storeY -= scale;
+        }
+
+        this.location = location;
+        this.tenges = tenges;
+
+        store = new Store(storeX, storeY, randomColor(), scale);
+
+        if (isVisible){
+            store.makeVisible();
+        }
+    }
+
+    public void removeStore(int location){
+        if (this.location == location){
+            if (store != null) {
+                store.makeInvisible();
+                store = null;
+            }
+            this.tenges = 0;
+        } else{
+            System.out.println("No hay tienda en esta ubicación.");
+        }
+    }
+
+    public void placeRobot(int location){
+        if (location >= length || location < 0) {
+            throw new IllegalArgumentException("La ubicación no debe sobrepasar la longitud de la carretera.");
+        }
+
+        int[] pos = road.getCoordinates(location);
+        int scale = road.getScale();
+        road.makeSegmentInvisible(location);
+        this.location = location;
+
+        robot = new Robot(pos[0], pos[1], scale);
+
+        if (isVisible){
+            robot.makeVisible();
+        }
+    }
+
+    public void removeRobot(){
+        if (robot != null) {
+            road.makeSegmentVisible(this.location);
+            robot.makeInvisible();
+            robot = null;
+            this.location = -1;
+        } else {
+            System.out.println("No hay robot en esta ubicación.");
+        }
+    }
+
+    public void moveRobot() {
+        if (robot == null) {
+            System.out.println("No hay robot para mover.");
+            return;
+        }
+
+        int newLocation = this.location + 1;
+
+        if (newLocation >= length) {
+            System.out.println("El robot ya está al final de la carretera.");
+            return;
+        }
+
+        road.makeSegmentVisible(this.location);
+        int[] current = road.getCoordinates(this.location);
+        int[] next = road.getCoordinates(newLocation);
+
+        int distanceX = next[0] - current[0];
+        int distanceY = next[1] - current[1];
+
+        robot.moveHorizontal(distanceX);
+        robot.moveVertical(distanceY);
+        road.makeSegmentInvisible(newLocation);
+        this.location = newLocation;
+    }
+
+    private String randomColor() {
+        String[] colors = {"red", "blue", "green", "magenta", "cyan"};
+        int index = (int)(Math.random() * colors.length);
+        return colors[index];
+    }
+}
+
+import java.util.ArrayList;
+
+public class Road {
+    private int length;
+    private int scale;
+    private ArrayList<Rectangle> segments;
+
+    private final int canvasWidth = 300;
+    private final int canvasHeight = 300;
+
+    public Road(int length) {
+        this.length = length;
+        this.scale = 5; 
+        segments = new ArrayList<>();
+
+        int minX = 0;
+        int minY = 0;
+        int maxX = canvasWidth;
+        int maxY = canvasHeight;
+
+        int count = 0;
+
+        while (count < length && minX < maxX && minY < maxY) {
+            
+            for (int y = maxY; y >= minY && count < length; y -= scale) {
+                addRectangle(minX, y);
+                count++;
+            }
+            minX += scale;
+
+            
+            for (int x = minX; x <= maxX && count < length; x += scale) {
+                addRectangle(x, minY);
+                count++;
+            }
+            minY += scale;
+
+            
+            for (int y = minY; y <= maxY - scale && count < length; y += scale) {
+                addRectangle(maxX, y);
+                count++;
+            }
+            maxX -= scale;
+
+            
+            for (int x = maxX; x >= minX && count < length; x -= scale) {
+                addRectangle(x, maxY - scale);
+                count++;
+            }
+            maxY -= scale;
+        }
+    }
+
+    private void addRectangle(int x, int y) {
+        Rectangle r = new Rectangle();
+        r.changeSize(scale, scale);
+        r.moveHorizontal(x);
+        r.moveVertical(y);
+        r.changeColor("black");
+        r.makeVisible();
+        segments.add(r);
+    }
+
+    public void makeVisible() {
+        for (Rectangle r : segments) {
+            r.makeVisible();
+        }
+    }
+
+    public void makeInvisible() {
+        for (Rectangle r : segments) {
+            r.makeInvisible();
+        }
+    }
+
+    public int[] getCoordinates(int index) {
+        int[] pos = {segments.get(index).getX(), segments.get(index).getY()};
+        return pos;
+    }
+
+    public int getScale() {
+        return scale;
+    }
+
+    public void makeSegmentInvisible(int index) {
+        if (index >= 0 && index < segments.size()) {
+            segments.get(index).makeInvisible();
+        }
+    }
+
+    public void makeSegmentVisible(int index) {
+        if (index >= 0 && index < segments.size()) {
+            segments.get(index).makeVisible();
+        }
+    }
+}
+
+public class Robot {
+    private Rectangle body;
+    private Circle head;
+    private Rectangle eye1;
+    private Rectangle eye2;
+    private Rectangle leg1;
+    private Rectangle leg2;
+    private boolean isVisible;
+
+    public Robot(int x, int y, int scale) {
+        body = new Rectangle();
+        body.changeSize(scale * 8, scale * 12); 
+        body.moveHorizontal(x);
+        body.moveVertical(y);
+        body.changeColor(randomColor());
+
+        head = new Circle();
+        head.changeSize(scale * 4); 
+        head.moveHorizontal(x + scale * 2); 
+        head.moveVertical(y - scale * 6); 
+        head.changeColor(randomColor());
+
+        eye1 = new Rectangle();
+        eye1.changeSize(scale, scale); 
+        eye1.moveHorizontal(x + (int)(scale * 1.5)); 
+        eye1.moveVertical(y - scale * 5); 
+        eye1.changeColor("white");
+
+        eye2 = new Rectangle();
+        eye2.changeSize(scale, scale); 
+        eye2.moveHorizontal (x + (int)(scale * 4.5)); 
+        eye2.moveVertical(y - scale * 5); 
+        eye2.changeColor("white");
+
+        leg1 = new Rectangle();
+        leg1.changeSize(scale * 2, scale * 4); 
+        leg1.moveHorizontal(x + scale); 
+        leg1.moveVertical(y + scale * 12); 
+        leg1.changeColor(randomColor());
+
+        leg2 = new Rectangle();
+        leg2.changeSize(scale * 2, scale * 4); 
+        leg2.moveHorizontal(x + scale * 5); 
+        leg2.moveVertical(y + scale * 12); 
+        leg2.changeColor(randomColor());
+
+        isVisible = false;
+    }
+
+    public void makeVisible() {
+        isVisible = true;
+        body.makeVisible();
+        head.makeVisible();
+        eye1.makeVisible();
+        eye2.makeVisible();
+        leg1.makeVisible();
+        leg2.makeVisible();
+    }
+
+    public void makeInvisible() {
+        isVisible = false;
+        body.makeInvisible();
+        head.makeInvisible();
+        eye1.makeInvisible();
+        eye2.makeInvisible();
+        leg1.makeInvisible();
+        leg2.makeInvisible();
+    }
+
+    public void moveHorizontal(int distance) {
+        body.moveHorizontal(distance);
+        head.moveHorizontal(distance);
+        eye1.moveHorizontal(distance);
+        eye2.moveHorizontal(distance);
+        leg1.moveHorizontal(distance);
+        leg2.moveHorizontal(distance);
+    }
+
+    public void moveVertical(int distance) {
+        body.moveVertical(distance);
+        head.moveVertical(distance);
+        eye1.moveVertical(distance);
+        eye2.moveVertical(distance);
+        leg1.moveVertical(distance);
+        leg2.moveVertical(distance);
+    }
+
+    private String randomColor() {
+        String[] colors = {"red", "blue", "green", "magenta", "cyan"};
+        int index = (int)(Math.random() * colors.length);
+        return colors[index];
+    }
+}
+
+public class Store {
+    private Rectangle store;
+    private Rectangle door;
+    private boolean isVisible;
+
+    public Store(int x, int y, String color, int scale) {
+        store = new Rectangle();
+        store.changeSize(scale * 4, scale * 8); 
+        store.moveHorizontal(x);
+        store.moveVertical(y);
+        store.changeColor(color);
+
+        door = new Rectangle();
+        door.changeSize(scale, scale * 2);  
+        door.moveHorizontal(x + (int)(scale * 1.4)); 
+        door.moveVertical(y + scale * 6); 
+        door.changeColor("yellow");
+
+        isVisible = false;
+    }
+
+    public void makeVisible() {
+        isVisible = true;
+        store.makeVisible();
+        door.makeVisible();
+    }
+
+    public void makeInvisible() {
+        isVisible = false;
+        store.makeInvisible();
+        door.makeInvisible();
+    }
+}
