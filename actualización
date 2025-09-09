@@ -1,0 +1,452 @@
+import java.util.ArrayList;
+import java.util.HashSet;
+
+public class silkRoad {
+    private int length;
+    private boolean isVisible;
+    private ArrayList<Store> stores;
+    private ArrayList<Robot> robots;
+    private Road road;
+    private HashSet<Integer> occupied;
+
+    public silkRoad(int length) {
+        this.length = length;
+        this.road = new Road(length);
+        this.isVisible = false;
+        this.stores = new ArrayList<>();
+        this.robots = new ArrayList<>();
+        this.occupied = new HashSet<>();
+    }
+
+    public void makeVisible(){
+        isVisible = true;
+        road.makeVisible();
+        for (Store s : stores) s.makeVisible();
+        for (Robot r : robots) r.makeVisible();
+    }
+
+    public void makeInvisible(){
+        isVisible = false;
+        road.makeInvisible();
+        for (Store s : stores) s.makeInvisible();
+        for (Robot r : robots) r.makeInvisible();
+    }
+
+    public void placeStore(int location, int tenges){
+        if (location >= length || location < 0) throw new IllegalArgumentException("Ubicación inválida.");
+        if (occupied.contains(location)) throw new IllegalStateException("Ubicación ocupada.");
+        int[] pos = road.getCoordinates(location);
+        int scale = road.getScale();
+        Store s = new Store(location, pos[0], pos[1], randomColor(), scale, tenges);
+        stores.add(s);
+        occupied.add(location);
+        if (isVisible) s.makeVisible();
+    }
+
+    public void removeStore(int location){
+        Store st = findStore(location);
+        if (st != null) {
+            st.makeInvisible();
+            stores.remove(st);
+            occupied.remove(location);
+        }
+    }
+
+    public void resupplyStores(){
+        for (Store s : stores) {
+            if (s.getTenges() == 0) s.resupply();
+        }
+    }
+
+    public void placeRobot(int location){
+        if (location >= length || location < 0) throw new IllegalArgumentException("Ubicación inválida.");
+        if (occupied.contains(location)) throw new IllegalStateException("Ubicación ocupada.");
+        int[] pos = road.getCoordinates(location);
+        int scale = road.getScale();
+        Robot r = new Robot(location, pos[0], pos[1], scale);
+        robots.add(r);
+        occupied.add(location);
+        road.makeSegmentInvisible(location);
+        if (isVisible) r.makeVisible();
+    }
+
+    public void removeRobot(){
+        if (robots.isEmpty()) return;
+        Robot r = robots.remove(robots.size()-1);
+        road.makeSegmentVisible(r.getLocation());
+        r.makeInvisible();
+        occupied.remove(r.getLocation());
+    }
+
+    public void moveRobot(){
+        boolean allEmpty = true;
+        for (Store s : stores) {
+            if (s.getTenges() > 0) {
+                allEmpty = false;
+            }
+        }
+        if (allEmpty && !stores.isEmpty()) {
+            resupplyStores();
+        }
+
+        for (Robot r : robots) {
+            int cur = r.getLocation();
+            int next = cur + 1;
+            if (next < length && !occupied.contains(next)) {
+                int[] pos = road.getCoordinates(next);
+                r.moveTo(next, pos[0], pos[1]);
+                occupied.remove(cur);
+                occupied.add(next);
+                road.makeSegmentInvisible(next);
+                road.makeSegmentVisible(cur);
+
+                Store st = findStore(next);
+                if (st != null && st.getTenges() > 0) {
+                    int amountToCollect = Math.min(st.getTenges(), 10);
+                    r.addProfit(amountToCollect);
+                    st.setTenges(st.getTenges() - amountToCollect);
+                }
+            } else {
+                int start = r.getStartLocation();
+                if (!occupied.contains(start)) {
+                    int[] pos = road.getCoordinates(start);
+                    r.moveTo(start, pos[0], pos[1]);
+                    occupied.remove(cur);
+                    occupied.add(start);
+                    road.makeSegmentInvisible(start);
+                    road.makeSegmentVisible(cur);
+                }
+            }
+        }
+    }
+
+    public void returnRobots(){
+        for (Robot r : robots) {
+            int start = r.getStartLocation();
+            int[] pos = road.getCoordinates(start);
+            occupied.remove(r.getLocation());
+            r.moveTo(start, pos[0], pos[1]);
+            occupied.add(start);
+        }
+    }
+
+    public void reboot(){
+        resupplyStores();
+        returnRobots();
+    }
+
+    public void finish(){
+        for (Robot r : robots) {
+            System.out.println("Robot profit: " + r.getProfit());
+        }
+    }
+
+    public boolean ok(){
+        for (Robot r : robots) {
+            int next = r.getLocation() + 1;
+            if (next < length && !occupied.contains(next)) return true;
+        }
+        return false;
+    }
+
+    public ArrayList<String> stores(){
+        ArrayList<String> out = new ArrayList<>();
+        for (Store s : stores) out.add("loc=" + s.getLocation() + ", tenges=" + s.getTenges());
+        return out;
+    }
+
+    public ArrayList<String> robots(){
+        ArrayList<String> out = new ArrayList<>();
+        for (Robot r : robots) out.add("loc=" + r.getLocation() + ", profit=" + r.getProfit());
+        return out;
+    }
+
+    private Store findStore(int location){
+        for (Store s : stores) if (s.getLocation() == location) return s;
+        return null;
+    }
+
+    private String randomColor(){
+        String[] colors = {"red", "blue", "green", "magenta", "cyan"};
+        return colors[(int)(Math.random()*colors.length)];
+    }
+}
+
+import java.util.ArrayList;
+
+public class Road {
+    private int length;
+    private int scale;
+    private int gap;
+    private ArrayList<Rectangle> segments;
+
+    private final int marginLeft = 0;
+    private final int marginBottom = 0;
+    private final int canvasWidth = 300;
+    private final int canvasHeight = 300;
+
+    public Road(int length) {
+        this.length = length;
+        this.scale = 10; 
+        this.gap = 5;
+        segments = new ArrayList<>();
+
+        int x = marginLeft;
+        int y = canvasHeight - marginBottom - scale;
+        int stepX = 1;
+        int stepY = 0;
+        int steps = 1;
+        int count = 0;
+        int changes = 0;
+
+        for (int i = 0; i < length; i++) {
+            Rectangle r = new Rectangle();
+            r.changeSize(scale, scale);
+            r.moveHorizontal(x);
+            r.moveVertical(y);
+            r.changeColor("black");
+            r.makeVisible();
+            segments.add(r);
+
+            x += stepX * (scale + gap);
+            y -= stepY * (scale + gap);
+            count++;
+
+            if (count == steps) {
+                int temp = stepX;
+                stepX = -stepY;
+                stepY = temp;
+                count = 0;
+                changes++;
+                if (changes % 2 == 0) steps++;
+            }
+        }
+    }
+
+    public void makeVisible() {
+        for (Rectangle r : segments) {
+            r.makeVisible();
+        }
+    }
+
+    public void makeInvisible() {
+        for (Rectangle r : segments) {
+            r.makeInvisible();
+        }
+    }
+
+    public int[] getCoordinates(int index) {
+        int[] pos = {segments.get(index).getX(), segments.get(index).getY()};
+        return pos;
+    }
+
+    public int getXPosition(int index) {
+        return segments.get(index).getX();
+    }
+
+    public int getYPosition(int index) {
+        return segments.get(index).getY();
+    }
+
+    public int getScale() {
+        return scale;
+    }
+
+    public void makeSegmentInvisible(int index) {
+        if (index >= 0 && index < segments.size()) {
+            segments.get(index).makeInvisible();
+        }
+    }
+
+    public void makeSegmentVisible(int index) {
+        if (index >= 0 && index < segments.size()) {
+            segments.get(index).makeVisible();
+        }
+    }
+}
+
+public class Store {
+    private Rectangle storeShape;
+    private Rectangle door;
+    private boolean isVisible;
+    private int location;
+    private int tenges;
+    private final int initialTenges;
+    private int scale;
+    private int x;
+    private int y;
+
+    public Store(int location, int x, int y, String color, int scale, int initialTenges) {
+        this.location = location;
+        this.x = x;
+        this.y = y;
+        this.scale = scale;
+        this.initialTenges = initialTenges;
+        this.tenges = initialTenges;
+        storeShape = new Rectangle();
+        storeShape.changeSize(scale * 4, scale * 8);
+        storeShape.moveHorizontal(x);
+        storeShape.moveVertical(y);
+        storeShape.changeColor(color);
+        door = new Rectangle();
+        door.changeSize(scale, scale * 2);
+        door.moveHorizontal(x + (int)(scale * 1.4));
+        door.moveVertical(y + scale * 6);
+        door.changeColor("yellow");
+        isVisible = false;
+    }
+
+    public int getTenges() {
+        return tenges;
+    }
+
+    public void setTenges(int t) {
+        this.tenges = t;
+    }
+
+    public void resupply() {
+        this.tenges = this.initialTenges;
+    }
+
+    public int getLocation() {
+        return location;
+    }
+
+    public void makeVisible() {
+        isVisible = true;
+        storeShape.makeVisible();
+        door.makeVisible();
+    }
+
+    public void makeInvisible() {
+        isVisible = false;
+        storeShape.makeInvisible();
+        door.makeInvisible();
+    }
+}
+
+public class Robot {
+    private Rectangle body;
+    private Circle head;
+    private Rectangle eye1;
+    private Rectangle eye2;
+    private Rectangle leg1;
+    private Rectangle leg2;
+    private boolean isVisible;
+    private int location;
+    private final int startLocation;
+    private int profit;
+    private int x;
+    private int y;
+    private int scale;
+
+    public Robot(int location, int x, int y, int scale) {
+        this.location = location;
+        this.startLocation = location;
+        this.x = x;
+        this.y = y;
+        this.scale = scale;
+        this.profit = 0;
+        body = new Rectangle();
+        body.changeSize(scale * 8, scale * 12);
+        body.moveHorizontal(x);
+        body.moveVertical(y);
+        body.changeColor(randomColor());
+        head = new Circle();
+        head.changeSize(scale * 4);
+        head.moveHorizontal(x + scale * 2);
+        head.moveVertical(y - scale * 6);
+        head.changeColor(randomColor());
+        eye1 = new Rectangle();
+        eye1.changeSize(scale, scale);
+        eye1.moveHorizontal(x + (int)(scale * 1.5));
+        eye1.moveVertical(y - scale * 5);
+        eye1.changeColor("white");
+        eye2 = new Rectangle();
+        eye2.changeSize(scale, scale);
+        eye2.moveHorizontal(x + (int)(scale * 4.5));
+        eye2.moveVertical(y - scale * 5);
+        eye2.changeColor("white");
+        leg1 = new Rectangle();
+        leg1.changeSize(scale * 2, scale * 4);
+        leg1.moveHorizontal(x + scale);
+        leg1.moveVertical(y + scale * 12);
+        leg1.changeColor(randomColor());
+        leg2 = new Rectangle();
+        leg2.changeSize(scale * 2, scale * 4);
+        leg2.moveHorizontal(x + scale * 5);
+        leg2.moveVertical(y + scale * 12);
+        leg2.changeColor(randomColor());
+        isVisible = false;
+    }
+
+    public int getLocation() {
+        return location;
+    }
+
+    public int getStartLocation() {
+        return startLocation;
+    }
+
+    public int getProfit() {
+        return profit;
+    }
+
+    public void addProfit(int amount) {
+        profit += amount;
+    }
+
+    public void makeVisible() {
+        isVisible = true;
+        body.makeVisible();
+        head.makeVisible();
+        eye1.makeVisible();
+        eye2.makeVisible();
+        leg1.makeVisible();
+        leg2.makeVisible();
+    }
+
+    public void makeInvisible() {
+        isVisible = false;
+        body.makeInvisible();
+        head.makeInvisible();
+        eye1.makeInvisible();
+        eye2.makeInvisible();
+        leg1.makeInvisible();
+        leg2.makeInvisible();
+    }
+
+    public void moveHorizontal(int distance) {
+        body.moveHorizontal(distance);
+        head.moveHorizontal(distance);
+        eye1.moveHorizontal(distance);
+        eye2.moveHorizontal(distance);
+        leg1.moveHorizontal(distance);
+        leg2.moveHorizontal(distance);
+        x += distance;
+    }
+
+    public void moveVertical(int distance) {
+        body.moveVertical(distance);
+        head.moveVertical(distance);
+        eye1.moveVertical(distance);
+        eye2.moveVertical(distance);
+        leg1.moveVertical(distance);
+        leg2.moveVertical(distance);
+        y += distance;
+    }
+
+    public void moveTo(int newLocation, int newX, int newY) {
+        int dx = newX - x;
+        int dy = newY - y;
+        moveHorizontal(dx);
+        moveVertical(dy);
+        this.location = newLocation;
+    }
+
+    private String randomColor() {
+        String[] colors = {"red", "blue", "green", "magenta", "cyan"};
+        int index = (int)(Math.random() * colors.length);
+        return colors[index];
+    }
+}
