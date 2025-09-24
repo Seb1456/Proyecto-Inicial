@@ -1,0 +1,674 @@
+import javax.swing.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+
+public class SilkRoad {
+    public static final int MAX_LENGTH = 17;
+    public static final int SEGMENT_SIZE = 100;
+    public static final int[][] COORDINATES = {
+        {0, 0}, {100, 0}, {200, 0}, {300, 0}, {400, 0},
+        {400, 100}, {400, 200}, {400, 300}, {400, 400},
+        {300, 400}, {200, 400}, {100, 400}, {0, 400},
+        {0, 300}, {0, 200}, {100, 200}, {200, 200}
+    };
+
+    private static final String TITLE = "SilkRoad";
+    private int profit;
+    private int fundsTotal;
+    private final int roadLength;
+    public final Store[] stores;
+    private final HashMap<Integer, List<Robot>> robots;
+    private final int[] robotPresence;
+    private boolean success;
+
+    public SilkRoad(int length) {
+        this.roadLength = length;
+        this.stores = new Store[MAX_LENGTH];
+        this.robots = new HashMap<>();
+        this.robotPresence = new int[MAX_LENGTH];
+        this.profit = 0;
+        this.fundsTotal = 0;
+        this.success = true;
+
+        for (int i = 0; i < MAX_LENGTH; i++) {
+            stores[i] = null;
+            robots.put(i, new ArrayList<>());
+            robotPresence[i] = 0;
+        }
+
+        for (int i = 0; i < length; i++) {
+            new Road(COORDINATES[i][0], COORDINATES[i][1]);
+        }
+    }
+
+    public static void main(String[] args) {
+        int length = Integer.parseInt(JOptionPane.showInputDialog(null, "Enter road length [1, 17]", TITLE, JOptionPane.INFORMATION_MESSAGE));
+        if (length <= 0 || length > MAX_LENGTH) {
+            JOptionPane.showMessageDialog(null, "Invalid length", TITLE + " - Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+    }
+
+    public void placeStore(int pos, int funds) {
+        if (pos < 0 || pos >= roadLength || funds <= 0) {
+            JOptionPane.showMessageDialog(null, "Invalid store parameters", TITLE, JOptionPane.ERROR_MESSAGE);
+            success = false;
+            return;
+        }
+        if (stores[pos] != null) {
+            JOptionPane.showMessageDialog(null, "Store exists at position " + pos, TITLE, JOptionPane.ERROR_MESSAGE);
+            success = false;
+            return;
+        }
+        fundsTotal += funds;
+        stores[pos] = new Store(funds, pos);
+        updateBar();
+        success = true;
+        System.out.println("Store placed at " + pos + ", total funds: " + fundsTotal);
+    }
+
+    public void removeStore(int pos) {
+        if (pos < 0 || pos >= roadLength) {
+            JOptionPane.showMessageDialog(null, "Invalid position", TITLE, JOptionPane.ERROR_MESSAGE);
+            success = false;
+            return;
+        }
+        if (stores[pos] == null) {
+            JOptionPane.showMessageDialog(null, "No store at position " + (pos), TITLE, JOptionPane.ERROR_MESSAGE);
+            success = false;
+            return;
+        }
+        fundsTotal -= stores[pos].getFunds();
+        stores[pos].remove();
+        stores[pos] = null;
+        updateBar();
+        success = true;
+        System.out.println("Store removed from " + (pos) + ", total funds: " + fundsTotal);
+    }
+
+    public void placeRobot(int pos) {
+        if (pos < 0 || pos >= roadLength) {
+            JOptionPane.showMessageDialog(null, "Invalid position", TITLE, JOptionPane.ERROR_MESSAGE);
+            success = false;
+            return;
+        }
+        if (robotPresence[pos] == 1) {
+            JOptionPane.showMessageDialog(null, "Robot already at position " + (pos), TITLE, JOptionPane.ERROR_MESSAGE);
+            success = false;
+            return;
+        }
+        Robot robot = new Robot(pos);
+        robotPresence[pos] = 1;
+        robots.get(pos).add(robot);
+        
+        if (stores[pos] != null && stores[pos].isInStock()) {
+            int funds = stores[pos].getFunds();
+            robot.collectFunds(funds);
+            stores[pos].depleteStock();
+            stores[pos].changeColor();
+            profit += funds;
+            updateBar();
+        }
+        success = true;
+    }
+    
+    public void removeRobot(int pos) {
+        if (pos < 0 || pos >= roadLength) {
+            JOptionPane.showMessageDialog(null, "Invalid position", TITLE, JOptionPane.ERROR_MESSAGE);
+            success = false;
+            return;
+        }
+        if (robots.get(pos).isEmpty()) {
+            JOptionPane.showMessageDialog(null, "No robot at position " + (pos), TITLE, JOptionPane.ERROR_MESSAGE);
+            success = false;
+            return;
+        }
+        Robot robot = robots.get(pos).remove(0);
+        robot.remove();
+        robotPresence[pos] = 0;
+        success = true;
+    }
+
+    public void moveRobot(int pos, int steps) {
+        if (pos < 0 || pos >= roadLength || pos + steps < 0 || pos + steps >= roadLength) {
+            JOptionPane.showMessageDialog(null, "Invalid move parameters", TITLE, JOptionPane.ERROR_MESSAGE);
+            success = false;
+            return;
+        }
+        if (robots.get(pos).isEmpty()) {
+            JOptionPane.showMessageDialog(null, "No robot at position " + (pos), TITLE, JOptionPane.ERROR_MESSAGE);
+            success = false;
+            return;
+        }
+        Robot robot = robots.get(pos).remove(0);
+        int direction = steps > 0 ? 1 : -1;
+        int stepsAbs = Math.abs(steps);
+        for (int i = 1; i <= stepsAbs; i++) {
+            int newPos = pos + i * direction;
+            
+            robot.moveTo(direction, false);
+
+            if (stores[newPos] != null && stores[newPos].isInStock()) {
+                int funds = stores[newPos].getFunds();
+                robot.collectFunds(funds);
+                stores[newPos].depleteStock();
+                stores[newPos].changeColor();
+                profit += funds;
+                updateBar();
+            }
+        }
+        int finalPos = pos + steps;
+        robots.get(finalPos).add(robot);
+        success = true;
+    }
+
+
+    public void resupplyStores() {
+        for (int i = 0; i < roadLength; i++) {
+            Store store = stores[i];
+            if (store != null) {
+                if (!store.isInStock()) {
+                    store.restock();
+                    store.resetColor();
+                    fundsTotal += store.getFunds();
+                }
+            }
+        }
+        updateBar();
+        success = true;
+    }
+
+
+    public void returnRobots() {
+        for (int i = 0; i < MAX_LENGTH; i++) {
+            for (Robot robot : robots.get(i)) {
+                robot.moveTo(0, true);
+            }
+        }
+        success = true;
+    }
+
+    public void reboot() {
+        resupplyStores();
+        returnRobots();
+        profit = 0;
+        fundsTotal = 0;
+        updateBar();
+        success = true;
+    }
+
+    public int profit() {
+        JOptionPane.showMessageDialog(null, "Profit: " + profit, TITLE, JOptionPane.INFORMATION_MESSAGE);
+        success = true;
+        return profit;
+    }
+
+    public int[][] stores() {
+        int[][] data = new int[MAX_LENGTH][2];
+        for (int i = 0; i < MAX_LENGTH; i++) {
+            if (stores[i] != null) {
+                data[i] = new int[]{i, stores[i].getFunds()};
+            }
+        }
+        success = true;
+        return data;
+    }
+
+    public List<Robot> getAllRobots() {
+        List<Robot> currentRobots = new ArrayList<>();
+        for (int i = 0; i < MAX_LENGTH; i++) {
+            currentRobots.addAll(robots.get(i));
+        }
+        success = true;
+        return currentRobots;
+    }
+
+
+    public void makeVisible() {
+        for (int i = 0; i < MAX_LENGTH; i++) {
+            for (Robot robot : robots.get(i)) {
+                robot.show(true);
+            }
+            if (stores[i] != null) {
+                stores[i].show(true);
+            }
+        }
+        success = true;
+    }
+
+    public void makeInvisible() {
+        for (int i = 0; i < MAX_LENGTH; i++) {
+            for (Robot robot : robots.get(i)) {
+                robot.show(false);
+            }
+            if (stores[i] != null) {
+                stores[i].show(false);
+            }
+        }
+        success = true;
+    }
+
+    public void finish() {
+        success = true;
+        System.exit(0);
+    }
+    
+    public int getStoreCount() {
+        int count = 0;
+        for (Store s : stores) {
+            if (s != null) count++;
+        }
+        return count;
+    }   
+
+    public int getRobotCount() {
+        int count = 0;
+        for (int i = 0; i < MAX_LENGTH; i++) {
+            count += robots.get(i).size();
+        }
+        return count;
+    }
+    
+    public boolean ok() {
+        JOptionPane.showMessageDialog(null, success ? "Success" : "Failed", TITLE, success ? JOptionPane.PLAIN_MESSAGE : JOptionPane.ERROR_MESSAGE);
+        return success;
+    }
+
+    public void updateBar() {
+        int percentage = fundsTotal == 0 ? 0 : (int) ((double) profit / fundsTotal * 100);
+        Canvas.setProgress(percentage);
+    }
+    
+    public void bestProfit() {
+        List<Robot> datos = getAllRobots();
+    
+        Robot ganador = null;
+        int maxProfit = Integer.MIN_VALUE;
+
+        for (Robot r : datos) {
+            int profit = r.getFunds();
+            if (profit > maxProfit) {
+                maxProfit = profit;
+                ganador = r;
+            }
+        }
+
+        if (ganador != null) {
+            ganador.blink(10);
+        }
+
+        success = true;
+    }
+    
+    public int[][] emptiedStores() {
+        List<Store> emptiedStores = new ArrayList<>();
+        for (int i = 0; i < roadLength; i++) {
+            Store store = stores[i];
+            if (store != null && !store.isInStock()) {
+                emptiedStores.add(store);
+            }
+        }
+
+        emptiedStores.sort((s1, s2) -> Integer.compare(s1.getPosition(), s2.getPosition()));
+        
+        int[][] result = new int[emptiedStores.size()][2];
+        for (int i = 0; i < result.length; i++) {
+            Store store = emptiedStores.get(i);
+            result[i][0] = store.getPosition();
+            result[i][1] = store.getFunds();
+        }
+        if (!emptiedStores.isEmpty()) {
+            StringBuilder positionsMsg = new StringBuilder("Las empty stores están en las posiciones: ");
+            for (int i = 0; i < emptiedStores.size(); i++) {
+                positionsMsg.append(emptiedStores.get(i).getPosition());
+                if (i < emptiedStores.size() - 1) {
+                    positionsMsg.append(", ");
+                }
+            }
+            JOptionPane.showMessageDialog(null, positionsMsg.toString(), TITLE, JOptionPane.INFORMATION_MESSAGE);
+        } else {
+            JOptionPane.showMessageDialog(null, "No hay tiendas vacías.", TITLE, JOptionPane.INFORMATION_MESSAGE);
+        }
+        
+        return result;
+    }
+    
+    public void moveRobots(int steps) {
+        List<Robot> allRobots = getAllRobots();
+    
+        for (Robot r : allRobots) {
+            int pos = -1;
+            for (int i = 0; i < roadLength; i++) {
+                if (robots.get(i).contains(r)) {
+                    pos = i;
+                    break;
+                }
+            }
+
+            if (pos == -1) continue;
+
+            int newPos = pos + steps;
+            if (newPos >= 0 && newPos < roadLength) {
+                moveRobot(pos, steps);
+            } else {
+                JOptionPane.showMessageDialog(
+                    null,
+                    "Robot at position " + pos + " cannot be moved " + steps + " steps",
+                    TITLE,
+                    JOptionPane.ERROR_MESSAGE
+                );
+                success = false;
+                return;
+            }
+        }
+        success = true;
+    }
+}
+
+import java.awt.Color;
+import java.lang.Thread;
+
+public class Robot {
+    private static final Color[] COLORS = {Color.RED, Color.BLUE, Color.GREEN, Color.MAGENTA, Color.CYAN};
+    private static final int[][] POSITIONS = {
+        {50, 50}, {150, 50}, {250, 50}, {350, 50}, {450, 50},
+        {450, 150}, {450, 250}, {450, 350}, {450, 450},
+        {350, 450}, {250, 450}, {150, 450}, {50, 450},
+        {50, 350}, {50, 250}, {150, 250}, {250, 250}
+    };
+    private static final int SIZE = 25;
+
+    private final int origin;
+    private int position;
+    private int collectedFunds;
+    private final Circle body;
+    private boolean isVisible;
+
+    public Robot(int pos) {
+        this.position = pos;
+        this.origin = pos;
+        this.collectedFunds = 0;
+        this.body = new Circle(POSITIONS[pos][0], POSITIONS[pos][1], SIZE, COLORS[pos % COLORS.length]);
+        this.body.show(true);
+        this.isVisible = true;
+    }
+
+    public void moveTo(int steps, boolean reset) {
+        if (reset) {
+            this.position = origin;
+            this.collectedFunds = 0;
+        } else {
+            this.position += steps;
+        }
+        this.body.moveTo(POSITIONS[position][0], POSITIONS[position][1]);
+    }
+
+    public int getFunds() {
+        return collectedFunds;
+    }
+
+    public void show(boolean visible) {
+        this.isVisible = visible;
+        body.show(visible);
+    }
+    
+    public boolean isVisible(){
+        return isVisible;
+    }
+    
+    public void collectFunds(int amount) {
+        this.collectedFunds += amount;
+    }
+
+    public void remove() {
+        body.show(false);
+    }
+    
+    public void blink(int times) {
+        if (isVisible) {
+            boolean visible = true;
+            for (int i = 0; i < times; i++) {
+                visible = !visible;
+                show(visible);
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    System.out.println("Main thread interrupted during sleep.");
+                    Thread.currentThread().interrupt();
+                }
+            }
+            show(true); 
+        }
+    }
+}
+
+import org.junit.Before;
+import org.junit.Test;
+import static org.junit.Assert.*;
+
+/**
+ * Tests for SilkRoad project
+ * 
+ * @author Sebastián Granados - Daniel Valero
+ * @version 1.0
+ */
+public class SilkRoadC2Test {
+
+    private SilkRoad game;
+    private SilkRoad robots;
+
+        @Before
+    public void setUp() {
+        game = new SilkRoad(17);
+        game.makeInvisible();
+    }
+    /**
+     * Debería crear una tienda en la ubicación dada y dentro del rango de la carretera.
+     */
+    @Test
+    public void accordingGVShouldPLaceStoreInLocationGiven(){
+        game.placeStore(2, 100);
+        assertTrue("Se debio crear una tienda en posición 3", game.ok());
+        assertEquals("Ahora debe haber una tienda", 1, game.getStoreCount());
+    }
+    /**
+     * No deberia colocar una tienda fuera de los limites de la carretera.
+     */
+    @Test
+    public void accordingGVShouldNotPlaceStoreOutsideBounds(){
+        game.placeStore(18, 100);
+        assertFalse("No deberia permitir colocar tienda afuera de ruta", game.ok());
+        assertEquals("No debe haber ninguna tienda creada", 0, game.getStoreCount());
+    }
+    /**
+     * No deberia poder colocar una tienda donde ya existe otra creada.
+     */
+    @Test
+    public void accordingGVShouldNotBeCreatedInAlreadyExistentPositionOfStore(){
+        game.placeStore(3, 30);
+        game.placeStore(3, 400);
+        assertFalse("No deberia poder colocarse una tienda sobre la otra.", game.ok());
+        assertEquals("Solo debería haberse creado la primer tienda", 1, game.getStoreCount());
+    }
+    /**
+     * Debería eliminar la tienda ya creada.
+     */
+    @Test
+    public void accordingGVShouldEraseAnStoreAlreadyPlaced(){
+        game.placeStore(4, 100);
+        game.removeStore(4);
+        assertTrue("Debería poder haberse borrado la tienda.", game.ok());
+        assertEquals("No debería haber ninguna tienda de haberse borrado correctamente.", 0, game.getStoreCount());
+    }
+    /**
+     * Deberia poder crear un robot en una ubicación valida y dentro del rango.
+     */
+    @Test
+    public void accordingGVShouldPlaceRobotCorrectlyInAValidLocation(){
+        game.placeRobot(15);
+        assertTrue("Deberia haber colocado el robot en la posición 16", game.ok());
+        assertEquals("Ahora existe un solo robot en la lista.", 1, game.getRobotCount());
+    }
+    /**
+     * No deberia colocar un robot afuera del rango de la carretera.
+     */
+    @Test
+    public void accordingGVShouldNotPlaceRobotOutOfBounds(){
+        game.placeRobot(18);
+        assertFalse("No deberia permitir colocar un robot afuera de ruta.", game.ok());
+        assertEquals("No debe haber ningun robot creado.", 0, game.getStoreCount());
+    }
+    /**
+     * Deberia eliminar el robot ya creado.
+     */
+    @Test
+    public void accordingGVShouldEraseTheRobotAlreadyPlaced(){
+        game.placeRobot(5);
+        game.removeRobot(5);
+        assertTrue("Deberia poder haber borrado al robot.", game.ok());
+        assertEquals("No debería existir ningún robot existente.", 0, game.getStoreCount());
+    }
+    /**
+     * Deberia recolectar los tenges al colocar un robot sobre una tienda.
+     */
+    @Test
+    public void accordingGVShouldCollectTheFundsFromStoreIfRobotIsPlacedInStore(){
+        game.placeStore(8,300);
+        game.placeRobot(8);
+        assertTrue("La operación debe estar correcta y ser válida", game.ok());
+        assertEquals("El robot debe recoger los 300 tenges", 300, game.profit());
+    }
+    /**
+     * Deberia pasar por una tienda y recolectar sus tenges.
+     */
+    @Test
+    public void accordingGVShouldCollectTheFundsIfItPassesByAnStore(){
+        game.placeStore(4, 250);
+        game.placeRobot(3);
+        game.moveRobot(3, 2);
+        assertTrue("Esta operación debe ser válida.", game.ok());
+        assertEquals("El profit debe ser 250.", 250, game.profit());
+    }
+    /**
+     * No deberia recolectar de tiendas si no tienen tenges.
+     */
+    @Test
+    public void accordingGVShouldNotCollectFundsIfThereIsNoFunds(){
+        game.placeStore(3, 0);
+        game.placeRobot(2);
+        game.moveRobot(2, 2);
+        assertTrue("La operación debe ser válida", game.ok());
+        assertEquals("El profit debe quedar en 0.", 0, game.profit());
+    }
+    /**
+     * No deberia eliminar una tienda que no existe.
+     */
+    @Test
+    public void accordingGVShouldNotEraseANonExistentStore(){
+        game.removeStore(5);
+        assertFalse("No deberia ser valida esta operación.", game.ok());
+    }
+    /**
+     * No debería cambiar tiendas que aún tienen stock.
+     */
+    @Test
+    public void accordingGVShouldNotAlterStoresInStock() {
+        game.placeStore(3, 200);
+        int beforeFunds = game.stores()[3][1];
+        
+        game.resupplyStores();
+        int afterFunds = game.stores()[3][1];
+        
+        assertEquals("Los fondos de la tienda no deben cambiar si aún estaba en stock", beforeFunds, afterFunds);
+    }
+
+    /**
+     * Debería devolver los robots al origen.
+     */
+    @Test
+    public void accordingGVShouldReturnRobotsToOrigin() {
+        game.placeRobot(5);
+        game.moveRobot(5, -2);
+
+        game.returnRobots();
+        assertTrue("La operación debe ser válida", game.ok());
+        assertEquals("Debe seguir existiendo 1 robot tras returnRobots", 1, game.getRobotCount());
+    }
+
+    /**
+     * Debería reiniciar profit y fondos.
+     */
+    @Test
+    public void accordingGVShouldRebootCorrectly() {
+        game.placeStore(4, 150);
+        game.placeRobot(4);
+        assertEquals("El profit debe ser 150", 150, game.profit());
+
+        game.reboot();
+        assertTrue("Reboot debe ser válido", game.ok());
+        assertEquals("El profit debe reiniciarse en 0", 0, game.profit());
+        assertEquals("Los fondos totales deben reiniciarse en 0", 0, game.getStoreCount() * 0);
+    }
+
+    /**
+     * Debería devolver el profit acumulado.
+     */
+    @Test
+    public void accordingGVShouldReturnProfitValue() {
+        game.placeStore(6, 120);
+        game.placeRobot(6);
+        int result = game.profit();
+
+        assertEquals("El profit debe ser 120", 120, result);
+    }
+
+    /**
+     * Debería resaltar el robot con mayor ganancia.
+     */
+    @Test
+    public void accordingGVShouldHighlightBestProfitRobot() {
+        game.placeStore(1, 100);
+        game.placeRobot(1);
+        game.placeStore(2, 50);
+        game.placeRobot(2);
+
+        game.bestProfit();
+        assertTrue("La operación debe ser válida", game.ok());
+    }
+
+    /**
+     * Debería listar correctamente las tiendas vacías.
+     */
+    @Test
+    public void accordingGVShouldListEmptiedStores() {
+        game.placeStore(3, 80);
+        game.placeRobot(3);
+        int[][] emptied = game.emptiedStores();
+
+        assertEquals("Debe haber 1 tienda vacía", 1, emptied.length);
+        assertEquals("La tienda vacía debe estar en posición 3", 3, emptied[0][0]);
+    }
+
+    /**
+     * Debería mover todos los robots cuando hay espacio.
+     */
+    @Test
+    public void accordingGVShouldMoveAllRobots() {
+        game.placeRobot(5);
+        game.moveRobots(2);
+        assertTrue("La operación debe ser válida", game.ok());
+        assertEquals("Debe seguir existiendo 1 robot tras moveRobots", 1, game.getRobotCount());
+    }
+
+    /**
+     * No debería permitir mover robots fuera del rango.
+     */
+    @Test
+    public void accordingGVShouldNotMoveRobotsOutOfBounds() {
+        game.placeRobot(0);
+        game.moveRobots(-1);
+        assertFalse("La operación debe ser inválida", game.ok());
+    }
+}
+
